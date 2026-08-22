@@ -1,0 +1,14 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0f1115"><title>匯入持股</title><style>body{margin:0;background:#0b0d11;color:#f6f7f9;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif}.w{max-width:520px;margin:auto;padding:calc(28px + env(safe-area-inset-top)) 20px}.card{background:#141821;border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:22px}h1{font-size:30px;margin:0 0 10px}p{color:#9aa2b0;line-height:1.6}.list{margin:20px 0;border-top:1px solid rgba(255,255,255,.08)}.r{display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.08)}button{width:100%;border:0;border-radius:16px;padding:15px;font-size:17px;font-weight:700;background:#f3f0e8;color:#111}.note{font-size:12px}</style></head><body><div class="w"><div class="card"><h1>匯入你的台股持股</h1><p>我已依你 2026/08/21 的庫存截圖整理。這會把 8 檔資料寫進 Investfolio；不會重複匯入同一批。</p><div class="list" id="list"></div><button onclick="go()">確認匯入 8 檔</button><p class="note">台灣虎航 6757 的完整成本/市價在截圖中沒有展開，因此先不猜數字，避免把錯誤資料寫進去。</p></div></div><script>
+const items=[
+['0050','元大台灣50',7795,65.65,511918,104.65],
+['00919','群益台灣精選高息',2338,29.91,69945,30.8],
+['1101','台泥',1099,49.88,54821,24.85],
+['2317','鴻海',250,257.5,64399,245.5],
+['2330','台積電',20,1870,37414,2410],
+['2454','聯發科',35,3691.43,129249,3790],
+['3711','日月光投控',130,617.46,80300,587],
+['6207','雷科',300,124,37214,103.5]
+];
+document.getElementById('list').innerHTML=items.map(x=>`<div class="r"><span>${x[1]} ${x[0]}</span><strong>${x[2].toLocaleString()} 股</strong></div>`).join('');
+function go(){const key='investfolio_v1';let s;try{s=JSON.parse(localStorage.getItem(key)||'{}')}catch(e){s={}};s.transactions=s.transactions||[];s.brokers=s.brokers||[];s.quotes=s.quotes||{};s.settings=s.settings||{finmindToken:'',twelveKey:'',usdTwd:31.2};const batch='screenshot-20260821';if(!s.transactions.some(t=>t.importBatch===batch)){const broker='原券商（館前分公司）';if(!s.brokers.includes(broker))s.brokers.push(broker);for(const x of items){const [symbol,name,qty,avg,cost,current]=x;const fee=Number((cost-qty*avg).toFixed(2));s.transactions.push({id:batch+'-'+symbol,importBatch:batch,market:'TW',type:'BUY',symbol,name,broker,date:'2026-08-21',qty,price:avg,fee,amount:0,fx:1});s.quotes['TW|'+symbol]={price:current,updated:'2026-08-21T15:14:00+08:00'}}localStorage.setItem(key,JSON.stringify(s))}location.href='./';}
+</script></body></html>
