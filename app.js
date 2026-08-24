@@ -5,40 +5,27 @@ let market='ALL',brokerFilter='ALL',view='STOCK',searchText='',expanded='';
 let sortBy=localStorage.getItem('investfolio_sort')||'value';
 const $=s=>document.querySelector(s),fmt=(n,d=0)=>new Intl.NumberFormat('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d}).format(+n||0),cash=(n,m)=>m==='US'?'US$'+fmt(n,2):'NT$'+fmt(n,0),pc=n=>+n>=0?'up':'down',save=()=>localStorage.setItem(K,JSON.stringify(state));
 
-// 這些只作為全新安裝時的最後備援；既有 iPhone localStorage 的 V1 數字優先，絕不覆寫。
 const FALLBACK_V1={TW:{'0050':104.65,'00919':30.8,'1101':24.85,'2317':245.5,'2330':2410,'2454':3790,'3711':587,'6207':103.5,'6757':55.8},US:{'NVDA':214.72,'UBER':78.60,'AAPL':309.35,'DIS':107.78,'QQQM':293.76,'SOXL':120.60,'MRVL':237.04,'FLKR':58.50,'SNOW':332.78,'HPE':53.45,'TQQQ':71.17}};
 const recurring=(m,s,b)=>m==='TW'&&['0050','00919'].includes(s)?5000:m==='US'&&s==='QQQM'&&b==='富邦證券（複委託）'?5000:0;
 const brokerLabel=b=>b==='原券商（館前分公司）'?'國泰證券':b;
 
 function repairV2DuplicateHoldings(){
-  // V2 初版把「原券商（館前分公司）」改名為「國泰證券」後，又 seed 一份，會造成同一批台股被重複計入。
   const originals=new Set(state.transactions.filter(t=>t.market==='TW'&&t.broker==='原券商（館前分公司）').map(t=>t.symbol));
-  if(originals.size){
-    state.transactions=state.transactions.filter(t=>!(t.market==='TW'&&t.broker==='國泰證券'&&originals.has(t.symbol)));
-  }
+  if(originals.size)state.transactions=state.transactions.filter(t=>!(t.market==='TW'&&t.broker==='國泰證券'&&originals.has(t.symbol)));
   state.brokers=state.brokers.filter((b,i,a)=>a.indexOf(b)===i && !(b==='國泰證券'&&state.brokers.includes('原券商（館前分公司）')));
 }
-
 function migrateV1PricesExactly(){
-  // 最重要：使用「手機原本 V1 的 state.quotes」建立不可覆寫的券商基準價。
-  // 先前 V2 錯誤地改用硬編碼價格，這裡會把那批 fallback snapshot 修回手機既有資料。
   const keys=new Set([...Object.keys(state.quotes),...Object.entries(FALLBACK_V1).flatMap(([m,o])=>Object.keys(o).map(s=>m+'|'+s))]);
   for(const k of keys){
-    const [m,s]=k.split('|');
-    const old=state.quotes[k];
-    const existing=state.brokerSnapshots[k];
+    const [m,s]=k.split('|'),old=state.quotes[k],existing=state.brokerSnapshots[k];
     if(old&&Number(old.price)>0){
-      if(!existing || ['V1券商截圖','V1備援值','V1既有截圖資料'].includes(existing.source)){
-        state.brokerSnapshots[k]={price:Number(old.price),confirmedAt:old.updated||'2026-08-22T15:42:00+08:00',source:'V1既有截圖資料'};
-      }
+      if(!existing||['V1券商截圖','V1備援值','V1既有截圖資料'].includes(existing.source))state.brokerSnapshots[k]={price:Number(old.price),confirmedAt:old.updated||'2026-08-22T15:42:00+08:00',source:'V1既有截圖資料'};
     }else if(!existing&&FALLBACK_V1[m]?.[s]!=null){
       state.brokerSnapshots[k]={price:Number(FALLBACK_V1[m][s]),confirmedAt:'2026-08-22T15:42:00+08:00',source:'V1備援值'};
     }
   }
 }
-
-repairV2DuplicateHoldings();
-migrateV1PricesExactly();
+repairV2DuplicateHoldings();migrateV1PricesExactly();
 
 function seedOne(broker,market,items,prefix,fx=1){
   if(!state.brokers.includes(broker))state.brokers.push(broker);
@@ -46,13 +33,10 @@ function seedOne(broker,market,items,prefix,fx=1){
     const sameAccountBroker=b=>market==='TW'&&['原券商（館前分公司）','國泰證券'].includes(b);
     const exists=state.transactions.some(t=>t.market===market&&t.symbol===symbol&&(t.broker===broker||(sameAccountBroker(t.broker)&&sameAccountBroker(broker))));
     if(!exists){const fee=costOverride!=null?+(costOverride-qty*avg).toFixed(4):0;state.transactions.push({id:prefix+symbol,market,type:'BUY',symbol,name,broker,date:'2026-08-22',qty,price:avg,fee,fx});}
-    const k=market+'|'+symbol;
-    if(!state.brokerSnapshots[k])state.brokerSnapshots[k]={price:current,confirmedAt:'2026-08-22T15:42:00+08:00',source:'V1備援值'};
+    const k=market+'|'+symbol;if(!state.brokerSnapshots[k])state.brokerSnapshots[k]={price:current,confirmedAt:'2026-08-22T15:42:00+08:00',source:'V1備援值'};
   }
 }
-
 function seed(){
-  // 保留 V1 真實帳戶名稱，畫面才用 brokerLabel 顯示「國泰證券」，避免資料層再產生第二份帳戶。
   seedOne('原券商（館前分公司）','TW',[
     ['0050','元大台灣50',7795,65.65,104.65,511918],['00919','群益台灣精選高息',2338,29.91,30.8,69945],['1101','台泥',1099,49.88,24.85,54821],['2317','鴻海',250,257.5,245.5,64399],['2330','台積電',20,1870,2410,37414],['2454','聯發科',35,3691.43,3790,129249],['3711','日月光投控',130,617.46,587,80300],['6207','雷科',300,124,103.5,37214],['6757','台灣虎航',1,54,55.8,55]
   ],'tw-',1);
@@ -66,12 +50,11 @@ function seed(){
 seed();
 
 function trustedQuote(m,s){
-  const k=m+'|'+s,snap=state.brokerSnapshots[k];
-  // 現階段 V2 一律先用已確認的 V1 券商資料。marketQuotes 只是候選行情，不可以偷偷改畫面金額。
+  const k=m+'|'+s,live=state.marketQuotes[k],snap=state.brokerSnapshots[k];
+  if(live&&Number(live.price)>0)return{price:+live.price,updated:live.updated||'',source:'最新行情'};
   if(snap&&Number(snap.price)>0)return{price:+snap.price,updated:snap.confirmedAt||'',source:snap.source||'券商截圖'};
   return{price:0,updated:'',source:'無'};
 }
-
 function lots(){
   const m={};
   for(const t of state.transactions){
@@ -82,18 +65,38 @@ function lots(){
   }
   return Object.values(m).map(h=>{const q=trustedQuote(h.market,h.symbol),value=h.qty*q.price,pnl=value-h.cost;return{...h,price:q.price,value,pnl,pct:h.cost?pnl/h.cost*100:0,avg:h.cost/h.qty,updated:q.updated,quoteSource:q.source,recurring:recurring(h.market,h.symbol,h.broker)}});
 }
-
 function stocks(ls=lots()){
-  const m={};for(const h of ls){const k=h.market+'|'+h.symbol;if(!m[k])m[k]={market:h.market,symbol:h.symbol,name:h.name,qty:0,cost:0,value:0,brokers:[],updated:h.updated,quoteSource:h.quoteSource};const x=m[k];x.qty+=h.qty;x.cost+=h.cost;x.value+=h.value;x.brokers.push(h);if(h.updated>x.updated)x.updated=h.updated;}
+  const m={};for(const h of ls){const k=h.market+'|'+h.symbol;if(!m[k])m[k]={market:h.market,symbol:h.symbol,name:h.name,qty:0,cost:0,value:0,brokers:[],updated:h.updated,quoteSource:h.quoteSource};const x=m[k];x.qty+=h.qty;x.cost+=h.cost;x.value+=h.value;x.brokers.push(h);if(h.updated>x.updated){x.updated=h.updated;x.quoteSource=h.quoteSource;}}
   return Object.values(m).map(x=>({...x,price:x.qty?x.value/x.qty:0,pnl:x.value-x.cost,pct:x.cost?(x.value-x.cost)/x.cost*100:0,avg:x.qty?x.cost/x.qty:0,recurring:x.brokers.reduce((a,b)=>a+b.recurring,0)}));
 }
 function marketSummary(m){const a=stocks().filter(x=>x.market===m),cost=a.reduce((s,x)=>s+x.cost,0),value=a.reduce((s,x)=>s+x.value,0),pnl=value-cost;return{cost,value,pnl,pct:cost?pnl/cost*100:0};}
 function summaryCard(m,title){const x=marketSummary(m);return`<section class="marketCard"><div class="marketTitle"><span>${title}</span><small>${m==='TW'?'TWD':'USD'}</small></div><div class="marketValue">${cash(x.value,m)}</div><div class="metric"><span>投入成本</span><b>${cash(x.cost,m)}</b></div><div class="metric"><span>估算未實現損益</span><b class="${pc(x.pnl)}">${x.pnl>=0?'+':''}${cash(x.pnl,m)} · ${x.pct>=0?'+':''}${x.pct.toFixed(2)}%</b></div><div class="metric"><span>今日持倉變動</span><b class="muted">等待正常盤行情</b></div></section>`;}
 function filteredStocks(){let a=stocks().filter(x=>(market==='ALL'||x.market===market)&&(brokerFilter==='ALL'||x.brokers.some(b=>b.broker===brokerFilter))&&(!searchText||(x.symbol+' '+x.name).toLowerCase().includes(searchText.toLowerCase())));return a.sort((a,b)=>b[(sortBy==='pnl'?'pnl':'value')]-a[(sortBy==='pnl'?'pnl':'value')]);}
 function detail(x){const snap=state.brokerSnapshots[x.market+'|'+x.symbol];return`<div class="stockDetail">${x.brokers.map(b=>`<div class="brokerLine"><div><strong>${b.broker}</strong><span>${fmt(b.qty,Number.isInteger(b.qty)?0:5)} 股 · 成本 ${cash(b.cost,b.market)}</span></div><div><b>${cash(b.value,b.market)}</b><span class="${pc(b.pnl)}">${b.pnl>=0?'+':''}${cash(b.pnl,b.market)}</span></div></div>`).join('')}<div class="audit"><span>最近一次券商對帳價</span><b>${snap?cash(snap.price,x.market):'尚未建立'}</b><span>最近對帳日期</span><b>${snap?new Date(snap.confirmedAt).toLocaleDateString('zh-TW'):'尚未建立'}</b><span>目前價格來源</span><b>${x.quoteSource}</b><span>行情最後更新</span><b>${x.updated?new Date(x.updated).toLocaleString('zh-TW'):'尚未更新'}</b></div></div>`;}
-function stockCard(x){return`<article class="stockCard ${expanded===x.market+'|'+x.symbol?'open':''}" data-stock="${x.market}|${x.symbol}"><div class="stockTop"><div><div class="stockName">${x.name} <span>${x.symbol}</span></div><div class="stockMeta">${fmt(x.qty,Number.isInteger(x.qty)?0:5)} 股 · 成本價 ${cash(x.avg,x.market)}</div>${x.recurring?`<div class="recurring">↻ 定期定額 · 每月 NT$${fmt(x.recurring)}</div>`:''}</div><div class="stockPrice"><strong>${cash(x.price,x.market)}</strong><span>券商截圖基準價</span></div></div><div class="stockNumbers"><div><span>目前市值</span><b>${cash(x.value,x.market)}</b></div><div><span>估算未實現損益</span><b class="${pc(x.pnl)}">${x.pnl>=0?'+':''}${cash(x.pnl,x.market)}<small>${x.pct>=0?'+':''}${x.pct.toFixed(2)}%</small></b></div><div><span>今日漲跌</span><b class="muted">—</b></div></div>${expanded===x.market+'|'+x.symbol?detail(x):''}</article>`;}
+function stockCard(x){return`<article class="stockCard ${expanded===x.market+'|'+x.symbol?'open':''}" data-stock="${x.market}|${x.symbol}"><div class="stockTop"><div><div class="stockName">${x.name} <span>${x.symbol}</span></div><div class="stockMeta">${fmt(x.qty,Number.isInteger(x.qty)?0:5)} 股 · 成本價 ${cash(x.avg,x.market)}</div>${x.recurring?`<div class="recurring">↻ 定期定額 · 每月 NT$${fmt(x.recurring)}</div>`:''}</div><div class="stockPrice"><strong>${cash(x.price,x.market)}</strong><span>${x.quoteSource}</span></div></div><div class="stockNumbers"><div><span>目前市值</span><b>${cash(x.value,x.market)}</b></div><div><span>估算未實現損益</span><b class="${pc(x.pnl)}">${x.pnl>=0?'+':''}${cash(x.pnl,x.market)}<small>${x.pct>=0?'+':''}${x.pct.toFixed(2)}%</small></b></div><div><span>今日漲跌</span><b class="muted">—</b></div></div>${expanded===x.market+'|'+x.symbol?detail(x):''}</article>`;}
 function brokerView(){const ls=lots().filter(x=>(market==='ALL'||x.market===market)&&(brokerFilter==='ALL'||x.broker===brokerFilter));const g={};for(const h of ls)(g[h.broker]??=[]).push(h);return Object.entries(g).map(([n,a])=>`<section class="brokerGroup"><h3>${n}</h3><div class="brokerTotal">總市值 <b>${cash(a.reduce((s,x)=>s+x.value,0),a[0].market)}</b></div>${a.sort((a,b)=>b.value-a.value).map(h=>`<div class="brokerHolding"><span>${h.name} <small>${h.symbol}</small></span><b>${cash(h.value,h.market)}</b></div>`).join('')}</section>`).join('');}
-function render(){const brokers=['ALL',...new Set(lots().map(x=>x.broker))];$('#app').innerHTML=`<header><div><h1>我的投資</h1><p>V1 券商資料已鎖定 · 不會被行情覆寫</p></div><button class="refresh" onclick="refreshQuotes()">↻</button></header><div class="marketGrid">${summaryCard('TW','台股')}${summaryCard('US','美股')}</div><div class="viewSwitch"><button class="${view==='STOCK'?'active':''}" onclick="view='STOCK';render()">依股票</button><button class="${view==='BROKER'?'active':''}" onclick="view='BROKER';render()">依券商</button></div><div class="controls"><input id="search" placeholder="搜尋股票名稱或代號" value="${searchText}"><div class="chips"><button class="${market==='ALL'?'active':''}" onclick="market='ALL';render()">全部</button><button class="${market==='TW'?'active':''}" onclick="market='TW';render()">台股</button><button class="${market==='US'?'active':''}" onclick="market='US';render()">美股</button><select id="brokerSelect"><option value="ALL">全部券商</option>${brokers.slice(1).map(b=>`<option ${brokerFilter===b?'selected':''}>${b}</option>`).join('')}</select><select id="sort"><option value="value" ${sortBy==='value'?'selected':''}>市值排序</option><option value="pnl" ${sortBy==='pnl'?'selected':''}>未實現損益</option><option value="day" ${sortBy==='day'?'selected':''}>今日漲跌</option></select></div></div><div class="listTitle"><strong>${view==='STOCK'?'目前持股':'我的券商'}</strong><span>${view==='STOCK'?filteredStocks().length:brokers.length-1} ${view==='STOCK'?'檔':'家'}</span></div>${view==='STOCK'?filteredStocks().map(stockCard).join(''):brokerView()}`;$('#search').oninput=e=>{searchText=e.target.value;render()};$('#brokerSelect').onchange=e=>{brokerFilter=e.target.value;render()};$('#sort').onchange=e=>{sortBy=e.target.value;localStorage.setItem('investfolio_sort',sortBy);render()};document.querySelectorAll('[data-stock]').forEach(el=>el.onclick=()=>{expanded=expanded===el.dataset.stock?'':el.dataset.stock;render();});}
-async function refreshQuotes(){let ok=0;for(const h of stocks()){try{let p=0;if(h.market==='TW'){if(!state.settings.finmindToken)continue;const j=await(await fetch(`https://api.finmindtrade.com/api/v4/taiwan_stock_tick_snapshot?data_id=${encodeURIComponent(h.symbol)}&token=${encodeURIComponent(state.settings.finmindToken)}`)).json(),d=(j.data||[])[0]||{};p=+(d.close||d.price||d.last_price||0);}else{if(!state.settings.twelveKey)continue;const j=await(await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(h.symbol)}&apikey=${encodeURIComponent(state.settings.twelveKey)}`)).json();p=+j.price||0;}if(p){state.marketQuotes[h.market+'|'+h.symbol]={price:p,updated:new Date().toISOString(),source:'candidate'};ok++;}}catch(e){}}
-  save();render();alert(ok?`已取得 ${ok} 檔候選行情，但尚未套用，不會改動你截圖的金額。`:'目前沿用原本 V1 券商截圖價格；沒有修改任何金額。');}
+function render(){const brokers=['ALL',...new Set(lots().map(x=>x.broker))];$('#app').innerHTML=`<header><div><h1>我的投資</h1><p>右上角更新最新行情，成本資料不會被改動</p></div><button class="refresh" onclick="refreshQuotes()">↻</button></header><div class="marketGrid">${summaryCard('TW','台股')}${summaryCard('US','美股')}</div><div class="viewSwitch"><button class="${view==='STOCK'?'active':''}" onclick="view='STOCK';render()">依股票</button><button class="${view==='BROKER'?'active':''}" onclick="view='BROKER';render()">依券商</button></div><div class="controls"><input id="search" placeholder="搜尋股票名稱或代號" value="${searchText}"><div class="chips"><button class="${market==='ALL'?'active':''}" onclick="market='ALL';render()">全部</button><button class="${market==='TW'?'active':''}" onclick="market='TW';render()">台股</button><button class="${market==='US'?'active':''}" onclick="market='US';render()">美股</button><select id="brokerSelect"><option value="ALL">全部券商</option>${brokers.slice(1).map(b=>`<option ${brokerFilter===b?'selected':''}>${b}</option>`).join('')}</select><select id="sort"><option value="value" ${sortBy==='value'?'selected':''}>市值排序</option><option value="pnl" ${sortBy==='pnl'?'selected':''}>未實現損益</option><option value="day" ${sortBy==='day'?'selected':''}>今日漲跌</option></select></div></div><div class="listTitle"><strong>${view==='STOCK'?'目前持股':'我的券商'}</strong><span>${view==='STOCK'?filteredStocks().length:brokers.length-1} ${view==='STOCK'?'檔':'家'}</span></div>${view==='STOCK'?filteredStocks().map(stockCard).join(''):brokerView()}`;$('#search').oninput=e=>{searchText=e.target.value;render()};$('#brokerSelect').onchange=e=>{brokerFilter=e.target.value;render()};$('#sort').onchange=e=>{sortBy=e.target.value;localStorage.setItem('investfolio_sort',sortBy);render()};document.querySelectorAll('[data-stock]').forEach(el=>el.onclick=()=>{expanded=expanded===el.dataset.stock?'':el.dataset.stock;render();});}
+
+async function refreshQuotes(){
+  const btn=$('.refresh');if(btn){btn.disabled=true;btn.textContent='…';}
+  let ok=0,fail=0;
+  for(const h of stocks()){
+    try{
+      let p=0;
+      if(h.market==='TW'){
+        if(!state.settings.finmindToken){fail++;continue;}
+        const j=await(await fetch(`https://api.finmindtrade.com/api/v4/taiwan_stock_tick_snapshot?data_id=${encodeURIComponent(h.symbol)}&token=${encodeURIComponent(state.settings.finmindToken)}`,{cache:'no-store'})).json(),d=(j.data||[])[0]||{};
+        p=+(d.close||d.price||d.last_price||0);
+      }else{
+        if(!state.settings.twelveKey){fail++;continue;}
+        const j=await(await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(h.symbol)}&apikey=${encodeURIComponent(state.settings.twelveKey)}`,{cache:'no-store'})).json();
+        p=+j.price||0;
+      }
+      if(p>0){state.marketQuotes[h.market+'|'+h.symbol]={price:p,updated:new Date().toISOString(),source:'market'};ok++;}else fail++;
+    }catch(e){fail++;}
+  }
+  save();render();
+  if(ok)alert(`已更新 ${ok} 檔最新價格，並依原本購買成本重新計算目前市值與未實現損益${fail?`；${fail} 檔未更新`:''}。`);
+  else alert('目前沒有成功取得新行情；仍顯示最後可信價格，購買成本沒有被修改。請檢查行情 API 金鑰設定。');
+}
 render();
